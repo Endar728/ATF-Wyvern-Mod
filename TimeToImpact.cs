@@ -71,7 +71,7 @@ namespace ATFWyvernMod
 
         void Update()
         {
-            if (!Plugin.cfgTimeToImpact.Value)
+            if (!Plugin.modEnabled || !Plugin.cfgTimeToImpact.Value)
             {
                 if (ttiDisplayGO != null) ttiDisplayGO.SetActive(false);
                 return;
@@ -226,7 +226,7 @@ namespace ATFWyvernMod
         /// </summary>
         public static void RegisterProjectile(object projectile, Vector3 position, Vector3 velocity, Vector3 targetPos, bool ballistic, bool guided, string weaponType)
         {
-            if (!Plugin.cfgTimeToImpact.Value) return;
+            if (!Plugin.modEnabled || !Plugin.cfgTimeToImpact.Value) return;
             
             lock (activeProjectiles)
             {
@@ -265,7 +265,7 @@ namespace ATFWyvernMod
     {
         static void Postfix(Missile __instance)
         {
-            if (!Plugin.cfgTimeToImpact.Value) return;
+            if (!Plugin.modEnabled || !Plugin.cfgTimeToImpact.Value) return;
             ProjectileRegistrationHelper.RegisterProjectileForTTI(__instance, "Missile");
         }
     }
@@ -278,7 +278,7 @@ namespace ATFWyvernMod
     {
         static void Postfix(MountedMissile __instance, Unit owner, Unit target, Vector3 inheritedVelocity, WeaponStation weaponStation, GlobalPosition aimpoint)
         {
-            if (!Plugin.cfgTimeToImpact.Value) return;
+            if (!Plugin.modEnabled || !Plugin.cfgTimeToImpact.Value) return;
             ProjectileRegistrationHelper.RegisterProjectileForTTI(__instance, "Missile", target, aimpoint);
         }
     }
@@ -291,7 +291,7 @@ namespace ATFWyvernMod
     {
         static void Postfix(Laser __instance, Unit owner, Unit target, Vector3 inheritedVelocity, WeaponStation weaponStation, GlobalPosition aimpoint)
         {
-            if (!Plugin.cfgTimeToImpact.Value) return;
+            if (!Plugin.modEnabled || !Plugin.cfgTimeToImpact.Value) return;
             ProjectileRegistrationHelper.RegisterProjectileForTTI(__instance, "Laser", target, aimpoint);
         }
     }
@@ -412,7 +412,7 @@ namespace ATFWyvernMod
     {
         static System.Reflection.MethodBase TargetMethod()
         {
-            if (!Plugin.cfgTimeToImpact.Value) return null;
+            if (!Plugin.modEnabled || !Plugin.cfgTimeToImpact.Value) return null;
 
             try
             {
@@ -449,7 +449,7 @@ namespace ATFWyvernMod
 
         static void Postfix(object __instance)
         {
-            if (!Plugin.cfgTimeToImpact.Value) return;
+            if (!Plugin.modEnabled || !Plugin.cfgTimeToImpact.Value) return;
 
             try
             {
@@ -497,7 +497,7 @@ namespace ATFWyvernMod
     {
         static void Postfix(MonoBehaviour __instance)
         {
-            if (!Plugin.cfgTimeToImpact.Value) return;
+            if (!Plugin.modEnabled || !Plugin.cfgTimeToImpact.Value) return;
 
             var projType = __instance.GetType();
             if (projType.Name.Contains("Projectile") || projType.Name.Contains("Missile") || 

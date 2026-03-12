@@ -33,7 +33,12 @@ namespace ATFWyvernMod
             if (Input.GetKeyDown(cfgToggleKey.Value))
             {
                 modEnabled = !modEnabled;
-                Log.LogInfo($"[ATF Wyvern Mod] Mod features: {(modEnabled ? "ENABLED" : "DISABLED")}");
+                string status = modEnabled ? "ENABLED" : "DISABLED";
+                Log.LogInfo($"[ATF Wyvern Mod] ===== Mod features: {status} =====");
+                Log.LogInfo($"[ATF Wyvern Mod] - Laser Deconfliction: {(cfgLaserDeconfliction.Value && modEnabled ? "ON" : "OFF")}");
+                Log.LogInfo($"[ATF Wyvern Mod] - Time To Impact: {(cfgTimeToImpact.Value && modEnabled ? "ON" : "OFF")}");
+                Log.LogInfo($"[ATF Wyvern Mod] - Master Safe Slot: {(cfgMasterSafeSlot.Value && modEnabled ? "ON" : "OFF")}");
+                Log.LogInfo($"[ATF Wyvern Mod] - Laser Reticle Visibility: {(cfgLaserReticleVisibility.Value && modEnabled ? "ON" : "OFF")}");
             }
         }
 

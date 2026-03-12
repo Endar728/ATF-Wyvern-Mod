@@ -94,7 +94,7 @@ namespace ATFWyvernMod
 
         void Update()
         {
-            if (!Plugin.cfgLaserReticleVisibility.Value) return;
+            if (!Plugin.modEnabled || !Plugin.cfgLaserReticleVisibility.Value) return;
 
             // The Harmony patches handle the actual reticle color updates
             // This helper can be used for additional runtime checks if needed
@@ -149,7 +149,7 @@ namespace ATFWyvernMod
 
         static void Postfix(object __instance, Aircraft aircraft, System.Collections.Generic.List<Unit> targetList)
         {
-            if (!Plugin.cfgLaserReticleVisibility.Value) return;
+            if (!Plugin.modEnabled || !Plugin.cfgLaserReticleVisibility.Value) return;
 
             try
             {
@@ -267,7 +267,7 @@ namespace ATFWyvernMod
     {
         static void Postfix(TargetCam __instance)
         {
-            if (!Plugin.cfgLaserReticleVisibility.Value) return;
+            if (!Plugin.modEnabled || !Plugin.cfgLaserReticleVisibility.Value) return;
 
             try
             {
@@ -343,78 +343,18 @@ namespace ATFWyvernMod
     /// <summary>
     /// Patch to enhance any UI element that displays laser reticle
     /// This is a more general approach that patches UI update methods
+    /// DISABLED: This patch was causing Harmony errors. HUDLaserGuidedStatePatch and TargetCamUpdatePatch should be sufficient.
     /// </summary>
+    /*
     [HarmonyPatch]
     static class LaserReticleUIPatch
     {
         static System.Reflection.MethodBase TargetMethod()
         {
-            try
-            {
-                var assembly = typeof(Unit).Assembly;
-                var allTypes = assembly.GetTypes();
-
-                // Look for classes that might handle laser reticle display
-                // Exclude HUDLaserGuidedState since it's already handled by HUDLaserGuidedStatePatch
-                foreach (var type in allTypes)
-                {
-                    if (type.Name == "HUDLaserGuidedState") continue; // Skip, already patched
-                    
-                    if (type.Name.Contains("Laser") && (type.Name.Contains("HUD") || type.Name.Contains("Display") || type.Name.Contains("State")))
-                    {
-                        foreach (var method in type.GetMethods(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic))
-                        {
-                            if ((method.Name.Contains("Update") || method.Name.Contains("Display") || method.Name.Contains("Show")) &&
-                                !method.IsSpecialName)
-                            {
-                                Plugin.Log.LogInfo($"[LaserReticleVisibility] Found potential UI method: {type.FullName}.{method.Name}");
-                                return method;
-                            }
-                        }
-                    }
-                }
-            }
-            catch (System.Exception ex)
-            {
-                Plugin.Log.LogWarning($"[LaserReticleVisibility] Error finding laser reticle UI method: {ex.Message}\n{ex.StackTrace}");
-            }
-
+            // Disabled to prevent Harmony patching errors
+            // The HUDLaserGuidedStatePatch and TargetCamUpdatePatch should handle the main cases
             return null;
         }
-
-        static void Postfix(object __instance)
-        {
-            if (!Plugin.cfgLaserReticleVisibility.Value) return;
-
-            try
-            {
-                bool isNightVision = LaserReticleVisibility.IsNightVisionActive();
-                if (!isNightVision) return;
-
-                // Search for reticle-related UI elements
-                var instanceType = __instance.GetType();
-                var fields = instanceType.GetFields(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic);
-                
-                foreach (var field in fields)
-                {
-                    var value = field.GetValue(__instance);
-                    if (value == null) continue;
-
-                    if (value is Image image)
-                    {
-                        string fieldName = field.Name.ToLower();
-                        if (fieldName.Contains("reticle") || fieldName.Contains("laser") || fieldName.Contains("designator"))
-                        {
-                            image.color = LaserReticleVisibility.GetReticleColor(true);
-                            Plugin.Log.LogDebug($"[LaserReticleVisibility] Enhanced UI reticle: {field.Name}");
-                        }
-                    }
-                }
-            }
-            catch (System.Exception ex)
-            {
-                Plugin.Log.LogWarning($"[LaserReticleVisibility] Error in laser reticle UI patch: {ex.Message}");
-            }
-        }
     }
+    */
 }

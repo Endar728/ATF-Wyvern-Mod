@@ -22,7 +22,7 @@ namespace ATFWyvernMod
         /// </summary>
         public static bool IsSafeTarget(object target)
         {
-            if (!Plugin.cfgMasterSafeSlot.Value) return false;
+            if (!Plugin.modEnabled || !Plugin.cfgMasterSafeSlot.Value) return false;
             if (target == null) return false;
 
             try
@@ -67,7 +67,7 @@ namespace ATFWyvernMod
         /// </summary>
         public static TargetInfo GetTargetInfo(object target, Vector3 observerPosition)
         {
-            if (!Plugin.cfgMasterSafeSlot.Value) return null;
+            if (!Plugin.modEnabled || !Plugin.cfgMasterSafeSlot.Value) return null;
             if (target == null) return null;
 
             // Use cached info if available and recent
@@ -170,7 +170,7 @@ namespace ATFWyvernMod
     {
         static void Postfix(TrackingInfo __instance, GlobalPosition position)
         {
-            if (!Plugin.cfgMasterSafeSlot.Value) return;
+            if (!Plugin.modEnabled || !Plugin.cfgMasterSafeSlot.Value) return;
 
             try
             {
@@ -201,7 +201,7 @@ namespace ATFWyvernMod
     {
         static System.Reflection.MethodBase TargetMethod()
         {
-            if (!Plugin.cfgMasterSafeSlot.Value) return null;
+            if (!Plugin.modEnabled || !Plugin.cfgMasterSafeSlot.Value) return null;
 
             try
             {
@@ -242,7 +242,7 @@ namespace ATFWyvernMod
 
         static void Postfix(object __instance, ref bool __result, object __0)
         {
-            if (!Plugin.cfgMasterSafeSlot.Value) return;
+            if (!Plugin.modEnabled || !Plugin.cfgMasterSafeSlot.Value) return;
 
             try
             {
@@ -276,7 +276,7 @@ namespace ATFWyvernMod
     {
         static void Postfix(CombatHUD __instance, ref bool __result)
         {
-            if (!Plugin.cfgMasterSafeSlot.Value) return;
+            if (!Plugin.modEnabled || !Plugin.cfgMasterSafeSlot.Value) return;
 
             try
             {

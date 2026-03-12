@@ -23,7 +23,7 @@ namespace ATFWyvernMod
         /// </summary>
         public static void UpdatePlayerTargets(int playerId, List<object> selectedTargets)
         {
-            if (!Plugin.cfgLaserDeconfliction.Value) return;
+            if (!Plugin.modEnabled || !Plugin.cfgLaserDeconfliction.Value) return;
 
             // Update player's selected targets
             if (!playerSelectedTargets.ContainsKey(playerId))
@@ -125,7 +125,7 @@ namespace ATFWyvernMod
 
         void Update()
         {
-            if (!Plugin.cfgLaserDeconfliction.Value) return;
+            if (!Plugin.modEnabled || !Plugin.cfgLaserDeconfliction.Value) return;
 
             // Throttle updates
             if (Time.timeSinceLevelLoad - lastUpdateTime < UPDATE_INTERVAL) return;
@@ -209,7 +209,14 @@ namespace ATFWyvernMod
     {
         static void Prefix(LaserDesignator __instance)
         {
-            if (!Plugin.cfgLaserDeconfliction.Value) return;
+            if (!Plugin.modEnabled || !Plugin.cfgLaserDeconfliction.Value) return;
+            
+            // Critical null check - if instance is null, don't proceed
+            if (__instance == null)
+            {
+                Plugin.Log.LogWarning($"[LaserDeconfliction] LaserDesignator instance is null, skipping patch");
+                return;
+            }
 
             try
             {
@@ -219,41 +226,81 @@ namespace ATFWyvernMod
                 // Get deconflicted targets for this player
                 var deconflictedTargets = LaserDeconfliction.GetPlayerLaserTargets(playerId);
 
-                if (deconflictedTargets.Count > 0)
+                if (deconflictedTargets == null || deconflictedTargets.Count == 0)
                 {
-                    // Try to set the target list on the laser designator - try both property and field
-                    var designatorType = typeof(LaserDesignator);
-                    var targetListProp = designatorType.GetProperty("targetList", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public) ?? 
-                                         designatorType.GetProperty("TargetList", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public);
-                    var targetListField = designatorType.GetField("targetList", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public) ??
-                                          designatorType.GetField("TargetList", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public);
-                    
-                    // Convert our object list to List<Unit>
-                    var unitList = new List<Unit>();
-                    foreach (var target in deconflictedTargets)
+                    // No deconflicted targets, let original method proceed normally
+                    return;
+                }
+
+                // Try to get the current target list first to preserve its type/structure
+                var designatorType = typeof(LaserDesignator);
+                var targetListProp = designatorType.GetProperty("targetList", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public) ?? 
+                                     designatorType.GetProperty("TargetList", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public);
+                var targetListField = designatorType.GetField("targetList", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public) ??
+                                      designatorType.GetField("TargetList", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public);
+                
+                // Get current list if it exists
+                List<Unit> currentList = null;
+                if (targetListProp != null)
+                {
+                    var currentValue = targetListProp.GetValue(__instance);
+                    if (currentValue is List<Unit> existingList)
                     {
-                        if (target is Unit unit)
-                        {
-                            unitList.Add(unit);
-                        }
+                        currentList = existingList;
                     }
-                    
-                    if (unitList.Count > 0)
+                }
+                else if (targetListField != null)
+                {
+                    var currentValue = targetListField.GetValue(__instance);
+                    if (currentValue is List<Unit> existingList)
                     {
-                        if (targetListProp != null)
-                        {
-                            targetListProp.SetValue(__instance, unitList);
-                            Plugin.Log.LogDebug($"[LaserDeconfliction] Applied {unitList.Count} deconflicted targets to LaserDesignator via property");
-                        }
-                        else if (targetListField != null)
-                        {
-                            targetListField.SetValue(__instance, unitList);
-                            Plugin.Log.LogDebug($"[LaserDeconfliction] Applied {unitList.Count} deconflicted targets to LaserDesignator via field");
-                        }
-                        else
-                        {
-                            Plugin.Log.LogWarning($"[LaserDeconfliction] Could not find targetList property or field on LaserDesignator");
-                        }
+                        currentList = existingList;
+                    }
+                }
+                
+                // Convert our object list to List<Unit>
+                var unitList = new List<Unit>();
+                foreach (var target in deconflictedTargets)
+                {
+                    if (target is Unit unit && unit != null)
+                    {
+                        unitList.Add(unit);
+                    }
+                }
+                
+                if (unitList.Count == 0)
+                {
+                    // No valid units, let original method proceed
+                    return;
+                }
+                
+                // If we have an existing list, clear and add to it (preserves reference)
+                // Otherwise, create a new list
+                if (currentList != null)
+                {
+                    currentList.Clear();
+                    foreach (var unit in unitList)
+                    {
+                        currentList.Add(unit);
+                    }
+                    Plugin.Log.LogDebug($"[LaserDeconfliction] Updated existing targetList with {unitList.Count} deconflicted targets");
+                }
+                else
+                {
+                    // No existing list, set a new one
+                    if (targetListProp != null)
+                    {
+                        targetListProp.SetValue(__instance, unitList);
+                        Plugin.Log.LogDebug($"[LaserDeconfliction] Applied {unitList.Count} deconflicted targets to LaserDesignator via property");
+                    }
+                    else if (targetListField != null)
+                    {
+                        targetListField.SetValue(__instance, unitList);
+                        Plugin.Log.LogDebug($"[LaserDeconfliction] Applied {unitList.Count} deconflicted targets to LaserDesignator via field");
+                    }
+                    else
+                    {
+                        Plugin.Log.LogWarning($"[LaserDeconfliction] Could not find targetList property or field on LaserDesignator");
                     }
                 }
             }
@@ -273,7 +320,14 @@ namespace ATFWyvernMod
     {
         static void Postfix(WeaponManager __instance)
         {
-            if (!Plugin.cfgLaserDeconfliction.Value) return;
+            if (!Plugin.modEnabled || !Plugin.cfgLaserDeconfliction.Value) return;
+            
+            // Critical null check
+            if (__instance == null)
+            {
+                Plugin.Log.LogWarning($"[LaserDeconfliction] WeaponManager instance is null, skipping patch");
+                return;
+            }
 
             try
             {
@@ -293,29 +347,57 @@ namespace ATFWyvernMod
                 // Then, get deconflicted targets for this player and apply them
                 var deconflictedTargets = LaserDeconfliction.GetPlayerLaserTargets(playerId);
 
-                if (deconflictedTargets.Count > 0)
+                if (deconflictedTargets == null || deconflictedTargets.Count == 0)
                 {
-                    // Convert our object list to List<Unit>
-                    var unitList = new List<Unit>();
-                    foreach (var target in deconflictedTargets)
+                    return;
+                }
+
+                // Convert our object list to List<Unit>
+                var unitList = new List<Unit>();
+                foreach (var target in deconflictedTargets)
+                {
+                    if (target is Unit unit && unit != null)
                     {
-                        if (target is Unit unit)
-                        {
-                            unitList.Add(unit);
-                        }
+                        unitList.Add(unit);
                     }
-                    
-                    if (unitList.Count > 0)
+                }
+                
+                if (unitList.Count == 0)
+                {
+                    return;
+                }
+                
+                // Apply deconflicted targets by setting the targetList field via reflection
+                var managerType = typeof(WeaponManager);
+                if (managerType == null)
+                {
+                    Plugin.Log.LogWarning($"[LaserDeconfliction] Could not get WeaponManager type");
+                    return;
+                }
+                
+                var targetListField = managerType.GetField("targetList", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public);
+                if (targetListField != null)
+                {
+                    // Try to get existing list first to preserve reference
+                    var existingList = targetListField.GetValue(__instance) as List<Unit>;
+                    if (existingList != null)
                     {
-                        // Apply deconflicted targets by setting the targetList field via reflection
-                        var managerType = typeof(WeaponManager);
-                        var targetListField = managerType.GetField("targetList", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public);
-                        if (targetListField != null)
+                        existingList.Clear();
+                        foreach (var unit in unitList)
                         {
-                            targetListField.SetValue(__instance, unitList);
-                            Plugin.Log.LogDebug($"[LaserDeconfliction] Applied {unitList.Count} deconflicted targets to WeaponManager");
+                            existingList.Add(unit);
                         }
+                        Plugin.Log.LogDebug($"[LaserDeconfliction] Updated existing targetList with {unitList.Count} deconflicted targets in WeaponManager");
                     }
+                    else
+                    {
+                        targetListField.SetValue(__instance, unitList);
+                        Plugin.Log.LogDebug($"[LaserDeconfliction] Applied {unitList.Count} deconflicted targets to WeaponManager");
+                    }
+                }
+                else
+                {
+                    Plugin.Log.LogWarning($"[LaserDeconfliction] Could not find targetList field on WeaponManager");
                 }
             }
             catch (System.Exception ex)
