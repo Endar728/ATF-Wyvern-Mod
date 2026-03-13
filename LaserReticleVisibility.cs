@@ -1,3 +1,4 @@
+using System.Reflection;
 using HarmonyLib;
 using UnityEngine;
 using UnityEngine.UI;
@@ -26,7 +27,7 @@ namespace ATFWyvernMod
                 if (targetCam == null) return false;
 
                 // Try method first
-                var usingIRMethod = typeof(TargetCam).GetMethod("UsingIR", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic);
+                var usingIRMethod = typeof(TargetCam).GetMethod("UsingIR", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
                 if (usingIRMethod != null)
                 {
                     return (bool)usingIRMethod.Invoke(targetCam, null);
@@ -36,7 +37,6 @@ namespace ATFWyvernMod
                 try
                 {
                     var usingIR = usingIRCache.GetValue(targetCam, silent: true);
-                    // Traverse.GetValue<bool>() returns bool, not bool?, so just use it directly
                     if (usingIR is bool value)
                     {
                         return value;
@@ -45,8 +45,8 @@ namespace ATFWyvernMod
                 catch { }
 
                 // Fallback: try direct field access
-                var irField = typeof(TargetCam).GetField("usingIR", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic) ??
-                              typeof(TargetCam).GetField("UsingIR", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic);
+                var irField = typeof(TargetCam).GetField("usingIR", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic) ??
+                              typeof(TargetCam).GetField("UsingIR", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
                 if (irField != null)
                 {
                     return (bool)irField.GetValue(targetCam);
@@ -77,7 +77,7 @@ namespace ATFWyvernMod
         /// </summary>
         public static void ClearCache()
         {
-            // Clear any cached components if needed
+            usingIRCache.Reset();
         }
     }
 
@@ -95,9 +95,7 @@ namespace ATFWyvernMod
         void Update()
         {
             if (!Plugin.modEnabled || !Plugin.cfgLaserReticleVisibility.Value) return;
-
             // The Harmony patches handle the actual reticle color updates
-            // This helper can be used for additional runtime checks if needed
         }
     }
 
@@ -105,7 +103,6 @@ namespace ATFWyvernMod
 
     /// <summary>
     /// Patch HUDLaserGuidedState to enhance reticle visibility in night vision
-    /// This class likely handles the laser reticle display on the HUD/target camera
     /// </summary>
     [HarmonyPatch]
     static class HUDLaserGuidedStatePatch
@@ -118,17 +115,17 @@ namespace ATFWyvernMod
                 var hudLaserType = assembly.GetType("HUDLaserGuidedState");
                 if (hudLaserType != null)
                 {
-                    // Try UpdateWeaponDisplay first (from logs, this is the actual method name)
+                    // Try UpdateWeaponDisplay first
                     var updateWeaponDisplayMethod = hudLaserType.GetMethod("UpdateWeaponDisplay", 
-                        System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic);
+                        BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
                     if (updateWeaponDisplayMethod != null)
                     {
-                        Plugin.Log.LogInfo($"[LaserReticleVisibility] Found UpdateWeaponDisplay method on HUDLaserGuidedState");
+                        Plugin.Log.LogInfo("[LaserReticleVisibility] Found UpdateWeaponDisplay method on HUDLaserGuidedState");
                         return updateWeaponDisplayMethod;
                     }
 
                     // Fallback: Look for methods that update/display the reticle
-                    foreach (var method in hudLaserType.GetMethods(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic))
+                    foreach (var method in hudLaserType.GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic))
                     {
                         if ((method.Name.Contains("Update") || method.Name.Contains("Display") || method.Name.Contains("Show")) &&
                             !method.IsSpecialName)
@@ -150,6 +147,7 @@ namespace ATFWyvernMod
         static void Postfix(object __instance, Aircraft aircraft, System.Collections.Generic.List<Unit> targetList)
         {
             if (!Plugin.modEnabled || !Plugin.cfgLaserReticleVisibility.Value) return;
+            if (__instance == null) return;
 
             try
             {
@@ -167,7 +165,7 @@ namespace ATFWyvernMod
                     {
                         if (designator == null) continue;
                         
-                        var lasedTargetsMethod = laserDesignatorType.GetMethod("GetLasedTargets", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic);
+                        var lasedTargetsMethod = laserDesignatorType.GetMethod("GetLasedTargets", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
                         if (lasedTargetsMethod != null)
                         {
                             var targets = lasedTargetsMethod.Invoke(designator, null) as System.Collections.IList;
@@ -182,7 +180,6 @@ namespace ATFWyvernMod
 
                 if (!hasLasedTarget) return;
 
-                var instanceType = __instance.GetType();
                 var instanceGO = (__instance as MonoBehaviour)?.gameObject;
                 if (instanceGO == null) return;
                 
@@ -216,7 +213,8 @@ namespace ATFWyvernMod
                 }
                 
                 // Also check fields/properties
-                var fields = instanceType.GetFields(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic);
+                var instanceType = __instance.GetType();
+                var fields = instanceType.GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
                 foreach (var field in fields)
                 {
                     var value = field.GetValue(__instance);
@@ -248,7 +246,7 @@ namespace ATFWyvernMod
                 
                 if (!foundReticle)
                 {
-                    Plugin.Log.LogDebug($"[LaserReticleVisibility] No reticle components found in HUDLaserGuidedState (this is normal if not lasing)");
+                    Plugin.Log.LogDebug("[LaserReticleVisibility] No reticle components found in HUDLaserGuidedState (this is normal if not lasing)");
                 }
             }
             catch (System.Exception ex)
@@ -260,7 +258,6 @@ namespace ATFWyvernMod
 
     /// <summary>
     /// Patch TargetCam to enhance reticle visibility in night vision
-    /// TargetCam likely handles the target camera display including the reticle
     /// </summary>
     [HarmonyPatch(typeof(TargetCam), "Update")]
     static class TargetCamUpdatePatch
@@ -268,6 +265,7 @@ namespace ATFWyvernMod
         static void Postfix(TargetCam __instance)
         {
             if (!Plugin.modEnabled || !Plugin.cfgLaserReticleVisibility.Value) return;
+            if (__instance == null) return;
 
             try
             {
@@ -283,7 +281,7 @@ namespace ATFWyvernMod
                 {
                     if (designator == null) continue;
                     
-                    var lasedTargetsMethod = laserDesignatorType.GetMethod("GetLasedTargets", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic);
+                    var lasedTargetsMethod = laserDesignatorType.GetMethod("GetLasedTargets", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
                     if (lasedTargetsMethod != null)
                     {
                         var targets = lasedTargetsMethod.Invoke(designator, null) as System.Collections.IList;
@@ -299,7 +297,7 @@ namespace ATFWyvernMod
 
                 // Try to find reticle UI elements in TargetCam
                 var camType = typeof(TargetCam);
-                var fields = camType.GetFields(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic);
+                var fields = camType.GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
                 
                 foreach (var field in fields)
                 {
@@ -313,8 +311,6 @@ namespace ATFWyvernMod
                             field.Name.ToLower().Contains("crosshair") ||
                             (image.name != null && (image.name.ToLower().Contains("reticle") || image.name.ToLower().Contains("laser"))))
                         {
-                            image.color = LaserReticleVisibility.GetReticleColor(true);
-                            // Also try to increase brightness by adjusting alpha or using a brighter color
                             var enhancedColor = LaserReticleVisibility.GetReticleColor(true);
                             enhancedColor.a = 1.0f; // Full opacity
                             image.color = enhancedColor;
@@ -339,22 +335,4 @@ namespace ATFWyvernMod
             }
         }
     }
-
-    /// <summary>
-    /// Patch to enhance any UI element that displays laser reticle
-    /// This is a more general approach that patches UI update methods
-    /// DISABLED: This patch was causing Harmony errors. HUDLaserGuidedStatePatch and TargetCamUpdatePatch should be sufficient.
-    /// </summary>
-    /*
-    [HarmonyPatch]
-    static class LaserReticleUIPatch
-    {
-        static System.Reflection.MethodBase TargetMethod()
-        {
-            // Disabled to prevent Harmony patching errors
-            // The HUDLaserGuidedStatePatch and TargetCamUpdatePatch should handle the main cases
-            return null;
-        }
-    }
-    */
 }

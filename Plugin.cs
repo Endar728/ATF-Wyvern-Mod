@@ -26,6 +26,7 @@ namespace ATFWyvernMod
         static TimeToImpactDisplay ttiDisplayInstance;
         static LaserDeconflictionHelper laserHelperInstance;
         static LaserReticleVisibilityHelper laserReticleHelperInstance;
+        static MasterSafeSlotHelper masterSafeSlotHelperInstance;
 
         void Update()
         {
@@ -60,6 +61,10 @@ namespace ATFWyvernMod
             cfgDiscoverMethods = Config.Bind("Debug", "DiscoverMethods", false,
                 "Enable method discovery logging (logs all relevant game methods on startup)");
 
+            // Log initial state
+            Log.LogInfo("[ATF Wyvern Mod] v1.0.0 - Initializing...");
+            Log.LogInfo($"[ATF Wyvern Mod] Features enabled: LaserDeconfliction={cfgLaserDeconfliction.Value}, TimeToImpact={cfgTimeToImpact.Value}, MasterSafeSlot={cfgMasterSafeSlot.Value}, LaserReticleVisibility={cfgLaserReticleVisibility.Value}");
+
             // Method discovery (if enabled)
             if (cfgDiscoverMethods.Value)
             {
@@ -67,54 +72,70 @@ namespace ATFWyvernMod
             }
 
             // Initialize helpers on scene load
-            SceneManager.sceneLoaded += (scene, mode) =>
-            {
-                if (ttiDisplayInstance == null)
-                {
-                    var go = new GameObject("[ATFWyvernMod_TTIDisplay]");
-                    ttiDisplayInstance = go.AddComponent<TimeToImpactDisplay>();
-                    Log.LogInfo($"[ATF Wyvern Mod] TTI Display created in scene: {scene.name}");
-                }
-                
-                if (laserHelperInstance == null && cfgLaserDeconfliction.Value)
-                {
-                    var go = new GameObject("[ATFWyvernMod_LaserHelper]");
-                    laserHelperInstance = go.AddComponent<LaserDeconflictionHelper>();
-                    Log.LogInfo($"[ATF Wyvern Mod] Laser Helper created in scene: {scene.name}");
-                }
-                
-                if (laserReticleHelperInstance == null && cfgLaserReticleVisibility.Value)
-                {
-                    var go = new GameObject("[ATFWyvernMod_LaserReticleHelper]");
-                    laserReticleHelperInstance = go.AddComponent<LaserReticleVisibilityHelper>();
-                    Log.LogInfo($"[ATF Wyvern Mod] Laser Reticle Visibility Helper created in scene: {scene.name}");
-                }
-                
-                // Clear caches on scene load
-                LaserDeconfliction.Clear();
-                MasterSafeSlot.ClearCache();
-                LaserReticleVisibility.ClearCache();
-            };
+            SceneManager.sceneLoaded += OnSceneLoaded;
             
             // Handle scene unload
-            SceneManager.sceneUnloaded += (scene) =>
-            {
-                LaserDeconfliction.Clear();
-                MasterSafeSlot.ClearCache();
-                LaserReticleVisibility.ClearCache();
-            };
+            SceneManager.sceneUnloaded += OnSceneUnloaded;
 
+            // Apply Harmony patches
             var harmony = new Harmony("com.atf.wyvernmod");
             try
             {
                 harmony.PatchAll();
-                Logger.LogInfo("ATF Wyvern Mod v1.0.0 loaded - All patches applied");
-                Logger.LogInfo($"[ATF Wyvern Mod] Features enabled: LaserDeconfliction={cfgLaserDeconfliction.Value}, TimeToImpact={cfgTimeToImpact.Value}, MasterSafeSlot={cfgMasterSafeSlot.Value}, LaserReticleVisibility={cfgLaserReticleVisibility.Value}");
+                Log.LogInfo("[ATF Wyvern Mod] All Harmony patches applied successfully");
             }
             catch (System.Exception ex)
             {
-                Logger.LogError($"Error applying Harmony patches: {ex.Message}\n{ex.StackTrace}");
+                Log.LogError($"[ATF Wyvern Mod] Error applying Harmony patches: {ex.Message}\n{ex.StackTrace}");
             }
+        }
+
+        void OnSceneLoaded(Scene scene, LoadSceneMode mode)
+        {
+            // Create TTI Display
+            if (ttiDisplayInstance == null)
+            {
+                var go = new GameObject("[ATFWyvernMod_TTIDisplay]");
+                ttiDisplayInstance = go.AddComponent<TimeToImpactDisplay>();
+                Log.LogInfo($"[ATF Wyvern Mod] TTI Display created in scene: {scene.name}");
+            }
+            
+            // Create Laser Helper
+            if (laserHelperInstance == null && cfgLaserDeconfliction.Value)
+            {
+                var go = new GameObject("[ATFWyvernMod_LaserHelper]");
+                laserHelperInstance = go.AddComponent<LaserDeconflictionHelper>();
+                Log.LogInfo($"[ATF Wyvern Mod] Laser Helper created in scene: {scene.name}");
+            }
+            
+            // Create Laser Reticle Helper
+            if (laserReticleHelperInstance == null && cfgLaserReticleVisibility.Value)
+            {
+                var go = new GameObject("[ATFWyvernMod_LaserReticleHelper]");
+                laserReticleHelperInstance = go.AddComponent<LaserReticleVisibilityHelper>();
+                Log.LogInfo($"[ATF Wyvern Mod] Laser Reticle Visibility Helper created in scene: {scene.name}");
+            }
+            
+            // Create Master Safe Slot Helper
+            if (masterSafeSlotHelperInstance == null && cfgMasterSafeSlot.Value)
+            {
+                var go = new GameObject("[ATFWyvernMod_MasterSafeSlotHelper]");
+                masterSafeSlotHelperInstance = go.AddComponent<MasterSafeSlotHelper>();
+                Log.LogInfo($"[ATF Wyvern Mod] Master Safe Slot Helper created in scene: {scene.name}");
+            }
+            
+            // Clear caches on scene load
+            LaserDeconfliction.Clear();
+            MasterSafeSlot.ClearCache();
+            LaserReticleVisibility.ClearCache();
+        }
+
+        void OnSceneUnloaded(Scene scene)
+        {
+            // Clear caches on scene unload
+            LaserDeconfliction.Clear();
+            MasterSafeSlot.ClearCache();
+            LaserReticleVisibility.ClearCache();
         }
 
         /// <summary>

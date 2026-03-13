@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using System.Linq;
 using HarmonyLib;
 using UnityEngine;
 using UnityEngine.UI;
@@ -17,7 +16,8 @@ namespace ATFWyvernMod
         private RectTransform ttiRect;
 
         // Track active projectiles for TTI calculation
-        private static Dictionary<object, ProjectileData> activeProjectiles = new Dictionary<object, ProjectileData>();
+        private static readonly Dictionary<object, ProjectileData> activeProjectiles = new Dictionary<object, ProjectileData>();
+        private static readonly object projectilesLock = new object();
 
         public class ProjectileData
         {
@@ -107,7 +107,7 @@ namespace ATFWyvernMod
             ProjectileData bestProjectile = null;
             float bestTTI = float.MaxValue;
 
-            lock (activeProjectiles)
+            lock (projectilesLock)
             {
                 var toRemove = new List<object>();
                 
@@ -200,7 +200,7 @@ namespace ATFWyvernMod
 
         private string GetWeaponType()
         {
-            lock (activeProjectiles)
+            lock (projectilesLock)
             {
                 if (activeProjectiles.Count > 0)
                 {
@@ -227,8 +227,9 @@ namespace ATFWyvernMod
         public static void RegisterProjectile(object projectile, Vector3 position, Vector3 velocity, Vector3 targetPos, bool ballistic, bool guided, string weaponType)
         {
             if (!Plugin.modEnabled || !Plugin.cfgTimeToImpact.Value) return;
+            if (projectile == null) return;
             
-            lock (activeProjectiles)
+            lock (projectilesLock)
             {
                 activeProjectiles[projectile] = new ProjectileData
                 {
@@ -248,7 +249,9 @@ namespace ATFWyvernMod
         /// </summary>
         public static void UnregisterProjectile(object projectile)
         {
-            lock (activeProjectiles)
+            if (projectile == null) return;
+            
+            lock (projectilesLock)
             {
                 activeProjectiles.Remove(projectile);
             }
@@ -266,6 +269,7 @@ namespace ATFWyvernMod
         static void Postfix(Missile __instance)
         {
             if (!Plugin.modEnabled || !Plugin.cfgTimeToImpact.Value) return;
+            if (__instance == null) return;
             ProjectileRegistrationHelper.RegisterProjectileForTTI(__instance, "Missile");
         }
     }
@@ -279,6 +283,7 @@ namespace ATFWyvernMod
         static void Postfix(MountedMissile __instance, Unit owner, Unit target, Vector3 inheritedVelocity, WeaponStation weaponStation, GlobalPosition aimpoint)
         {
             if (!Plugin.modEnabled || !Plugin.cfgTimeToImpact.Value) return;
+            if (__instance == null) return;
             ProjectileRegistrationHelper.RegisterProjectileForTTI(__instance, "Missile", target, aimpoint);
         }
     }
@@ -292,6 +297,7 @@ namespace ATFWyvernMod
         static void Postfix(Laser __instance, Unit owner, Unit target, Vector3 inheritedVelocity, WeaponStation weaponStation, GlobalPosition aimpoint)
         {
             if (!Plugin.modEnabled || !Plugin.cfgTimeToImpact.Value) return;
+            if (__instance == null) return;
             ProjectileRegistrationHelper.RegisterProjectileForTTI(__instance, "Laser", target, aimpoint);
         }
     }
@@ -322,22 +328,30 @@ namespace ATFWyvernMod
                     }
                 }
 
-                // Get velocity
+                // Get velocity (read-only, never set to avoid kinematic body warnings)
                 Vector3 velocity = Vector3.zero;
-                var rbProp = projType.GetProperty("rb") ?? projType.GetProperty("rigidbody") ?? 
-                             projType.GetProperty("rigidBody");
-                if (rbProp != null)
+                try
                 {
-                    var rb = rbProp.GetValue(projectile);
-                    if (rb != null)
+                    var rbProp = projType.GetProperty("rb") ?? projType.GetProperty("rigidbody") ?? 
+                                 projType.GetProperty("rigidBody");
+                    if (rbProp != null)
                     {
-                        var rbType = rb.GetType();
-                        var velProp = rbType.GetProperty("velocity") ?? rbType.GetProperty("Velocity");
-                        if (velProp != null)
+                        var rb = rbProp.GetValue(projectile);
+                        if (rb != null)
                         {
-                            velocity = (Vector3)velProp.GetValue(rb);
+                            var rbType = rb.GetType();
+                            var velProp = rbType.GetProperty("velocity") ?? rbType.GetProperty("Velocity");
+                            if (velProp != null)
+                            {
+                                // Only read velocity, never set it (to avoid kinematic body warnings)
+                                velocity = (Vector3)velProp.GetValue(rb);
+                            }
                         }
                     }
+                }
+                catch (System.Exception ex)
+                {
+                    Plugin.Log.LogDebug($"[TimeToImpact] Could not read velocity from rigidbody: {ex.Message}");
                 }
 
                 // Try to get velocity directly from projectile
@@ -450,6 +464,7 @@ namespace ATFWyvernMod
         static void Postfix(object __instance)
         {
             if (!Plugin.modEnabled || !Plugin.cfgTimeToImpact.Value) return;
+            if (__instance == null) return;
 
             try
             {
@@ -498,6 +513,7 @@ namespace ATFWyvernMod
         static void Postfix(MonoBehaviour __instance)
         {
             if (!Plugin.modEnabled || !Plugin.cfgTimeToImpact.Value) return;
+            if (__instance == null) return;
 
             var projType = __instance.GetType();
             if (projType.Name.Contains("Projectile") || projType.Name.Contains("Missile") || 

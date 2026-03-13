@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using HarmonyLib;
 using UnityEngine;
 using UnityEngine.UI;
@@ -13,7 +14,7 @@ namespace ATFWyvernMod
     public static class MasterSafeSlot
     {
         // Cache for target info to avoid repeated calculations
-        private static Dictionary<object, TargetInfo> targetInfoCache = new Dictionary<object, TargetInfo>();
+        private static readonly Dictionary<object, TargetInfo> targetInfoCache = new Dictionary<object, TargetInfo>();
         private static float cacheUpdateTime = 0f;
         private const float CACHE_UPDATE_INTERVAL = 0.1f; // Update cache every 100ms
 
@@ -32,25 +33,26 @@ namespace ATFWyvernMod
                 
                 // Check if it's a Unit (or derived class like Aircraft, Ship, GroundVehicle)
                 if (targetType.Name == "Unit" || targetType.Name == "Aircraft" || 
-                    targetType.Name == "Ship" || targetType.Name == "GroundVehicle")
+                    targetType.Name == "Ship" || targetType.Name == "GroundVehicle" ||
+                    typeof(Unit).IsAssignableFrom(targetType))
                 {
                     // Try to get team information
-                    var teamProp = targetType.GetProperty("team") ?? targetType.GetProperty("Team");
-                    var friendlyProp = targetType.GetProperty("isFriendly") ?? targetType.GetProperty("IsFriendly");
+                    var teamProp = targetType.GetProperty("team", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic) ?? 
+                                   targetType.GetProperty("Team", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                    var friendlyProp = targetType.GetProperty("isFriendly", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic) ?? 
+                                       targetType.GetProperty("IsFriendly", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
                     
-                    if (teamProp != null)
+                    if (friendlyProp != null)
                     {
-                        var team = teamProp.GetValue(target);
-                        // Try to get player's team for comparison
-                        // For now, assume any unit can be queried (we'll refine this with actual team checking)
-                        return true; // Allow info gathering on all units when safe slot is enabled
-                    }
-                    else if (friendlyProp != null)
-                    {
-                        return (bool)friendlyProp.GetValue(target);
+                        var friendlyValue = friendlyProp.GetValue(target);
+                        if (friendlyValue is bool isFriendly)
+                        {
+                            return isFriendly;
+                        }
                     }
                     
                     // If we can't determine team, allow it (user can disable if needed)
+                    // This allows info gathering on all units when safe slot is enabled
                     return true;
                 }
             }
@@ -83,7 +85,8 @@ namespace ATFWyvernMod
                 
                 // Check if it's a Unit
                 if (targetType.Name == "Unit" || targetType.Name == "Aircraft" || 
-                    targetType.Name == "Ship" || targetType.Name == "GroundVehicle")
+                    targetType.Name == "Ship" || targetType.Name == "GroundVehicle" ||
+                    typeof(Unit).IsAssignableFrom(targetType))
                 {
                     // Get position
                     Vector3 targetPos = Vector3.zero;
@@ -163,7 +166,6 @@ namespace ATFWyvernMod
 
     /// <summary>
     /// Patch TrackingInfo to allow info gathering on friendlies
-    /// Based on the TargetEstimator mod, TrackingInfo is used for target tracking
     /// </summary>
     [HarmonyPatch(typeof(TrackingInfo), "UpdateInfo")]
     static class TrackingInfoPatch
@@ -171,6 +173,7 @@ namespace ATFWyvernMod
         static void Postfix(TrackingInfo __instance, GlobalPosition position)
         {
             if (!Plugin.modEnabled || !Plugin.cfgMasterSafeSlot.Value) return;
+            if (__instance == null) return;
 
             try
             {
@@ -179,9 +182,7 @@ namespace ATFWyvernMod
                     // If this is a safe target, ensure tracking info is available
                     if (MasterSafeSlot.IsSafeTarget(unit))
                     {
-                        // The tracking info is already updated, we just need to ensure
-                        // it's accessible even without a weapon lock
-                        Plugin.Log.LogDebug($"[MasterSafeSlot] Tracking info available for safe target");
+                        Plugin.Log.LogDebug("[MasterSafeSlot] Tracking info available for safe target");
                     }
                 }
             }
@@ -194,7 +195,6 @@ namespace ATFWyvernMod
 
     /// <summary>
     /// Patch weapon lock checks to allow info gathering on safe targets
-    /// Note: This patch is optional - if no suitable method is found, it will be skipped
     /// </summary>
     [HarmonyPatch]
     static class WeaponLockCheckPatch
@@ -214,9 +214,9 @@ namespace ATFWyvernMod
                     if (type.Name.Contains("WeaponSystem") || type.Name.Contains("WeaponStation") || 
                         type.Name.Contains("WeaponManager") || type.Name.Contains("TargetingSystem"))
                     {
-                        foreach (var method in type.GetMethods(System.Reflection.BindingFlags.Public | 
-                                                                 System.Reflection.BindingFlags.Instance | 
-                                                                 System.Reflection.BindingFlags.NonPublic))
+                        foreach (var method in type.GetMethods(BindingFlags.Public | 
+                                                                 BindingFlags.Instance | 
+                                                                 BindingFlags.NonPublic))
                         {
                             if ((method.Name.Contains("CanLock") || method.Name.Contains("CanTarget") || 
                                  method.Name.Contains("IsValidTarget") || method.Name.Contains("CheckLock")) &&
@@ -229,8 +229,7 @@ namespace ATFWyvernMod
                     }
                 }
                 
-                // If no method found, log but don't error - this is optional
-                Plugin.Log.LogDebug($"[MasterSafeSlot] No weapon lock check method found - feature may work partially");
+                Plugin.Log.LogDebug("[MasterSafeSlot] No weapon lock check method found - feature may work partially");
             }
             catch (System.Exception ex)
             {
@@ -251,10 +250,7 @@ namespace ATFWyvernMod
                 {
                     if (MasterSafeSlot.IsSafeTarget(__0))
                     {
-                        // Allow info lock (but not weapon lock)
-                        // We'll set result to true for info gathering purposes
-                        // but the actual weapon lock behavior may be handled elsewhere
-                        Plugin.Log.LogDebug($"[MasterSafeSlot] Allowing info lock on safe target");
+                        Plugin.Log.LogDebug("[MasterSafeSlot] Allowing info lock on safe target");
                         // Note: We don't change __result here to avoid breaking weapon lock behavior
                         // Instead, we rely on HUD patches to show info
                     }
@@ -268,20 +264,200 @@ namespace ATFWyvernMod
     }
 
     /// <summary>
+    /// Helper MonoBehaviour to continuously update HUD display for safe targets
+    /// </summary>
+    public class MasterSafeSlotHelper : MonoBehaviour
+    {
+        private CombatHUD combatHUD;
+        private Text targetInfoText;
+        private FieldInfo targetInfoField;
+        private PropertyInfo targetInfoProp;
+        private float lastUpdateTime = 0f;
+        private const float UPDATE_INTERVAL = 0.1f; // Update every 100ms
+
+        void Awake()
+        {
+            DontDestroyOnLoad(gameObject);
+        }
+
+        void Start()
+        {
+            FindHUDComponents();
+        }
+
+        void FindHUDComponents()
+        {
+            try
+            {
+                combatHUD = GameBindings.UI.GetCombatHUD(silent: true);
+                if (combatHUD == null)
+                {
+                    Plugin.Log.LogDebug("[MasterSafeSlot] CombatHUD not found yet");
+                    return;
+                }
+
+                var hudType = combatHUD.GetType();
+                
+                // Try to find targetInfo field or property
+                targetInfoField = hudType.GetField("targetInfo", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public) ??
+                                 hudType.GetField("TargetInfo", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public) ??
+                                 hudType.GetField("targetInfoText", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public) ??
+                                 hudType.GetField("targetText", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+                
+                if (targetInfoField == null)
+                {
+                    targetInfoProp = hudType.GetProperty("targetInfo", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public) ??
+                                     hudType.GetProperty("TargetInfo", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public) ??
+                                     hudType.GetProperty("targetInfoText", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+                }
+
+                if (targetInfoField != null)
+                {
+                    var textObj = targetInfoField.GetValue(combatHUD);
+                    if (textObj is Text text)
+                    {
+                        targetInfoText = text;
+                        Plugin.Log.LogInfo("[MasterSafeSlot] Found targetInfo Text field");
+                    }
+                    else
+                    {
+                        Plugin.Log.LogDebug($"[MasterSafeSlot] targetInfo field is not a Text component, type: {textObj?.GetType().Name ?? "null"}");
+                    }
+                }
+                else if (targetInfoProp != null)
+                {
+                    var textObj = targetInfoProp.GetValue(combatHUD);
+                    if (textObj is Text text)
+                    {
+                        targetInfoText = text;
+                        Plugin.Log.LogInfo("[MasterSafeSlot] Found targetInfo Text property");
+                    }
+                }
+                else
+                {
+                    // Try to find Text components in children
+                    var textComponents = combatHUD.GetComponentsInChildren<Text>(true);
+                    foreach (var text in textComponents)
+                    {
+                        if (text.name.Contains("Target") || text.name.Contains("Info"))
+                        {
+                            targetInfoText = text;
+                            Plugin.Log.LogInfo($"[MasterSafeSlot] Found Text component in children: {text.name}");
+                            break;
+                        }
+                    }
+                }
+
+                if (targetInfoText == null)
+                {
+                    Plugin.Log.LogWarning("[MasterSafeSlot] Could not find targetInfo Text component - feature may not display correctly");
+                }
+            }
+            catch (System.Exception ex)
+            {
+                Plugin.Log.LogWarning($"[MasterSafeSlot] Error finding HUD components: {ex.Message}");
+            }
+        }
+
+        void Update()
+        {
+            if (!Plugin.modEnabled || !Plugin.cfgMasterSafeSlot.Value)
+            {
+                if (targetInfoText != null && targetInfoText.text.Contains("SAFE TARGET"))
+                {
+                    targetInfoText.text = "";
+                }
+                return;
+            }
+
+            // Update at intervals to avoid excessive calculations
+            if (Time.timeSinceLevelLoad - lastUpdateTime < UPDATE_INTERVAL)
+            {
+                return;
+            }
+            lastUpdateTime = Time.timeSinceLevelLoad;
+
+            try
+            {
+                // Re-find HUD if needed
+                if (combatHUD == null || targetInfoText == null)
+                {
+                    FindHUDComponents();
+                }
+
+                if (combatHUD == null || targetInfoText == null)
+                {
+                    return;
+                }
+
+                // Get current target
+                var aircraft = GameBindings.Player.Aircraft.GetAircraft(silent: true);
+                var targetList = GameBindings.Player.TargetList.GetTargets(silent: true);
+
+                if (aircraft == null || targetList == null || targetList.Count == 0)
+                {
+                    // Clear display if no target
+                    if (targetInfoText.text.Contains("SAFE TARGET"))
+                    {
+                        targetInfoText.text = "";
+                    }
+                    return;
+                }
+
+                var currentTarget = targetList[0];
+                if (currentTarget is Unit unitTarget && MasterSafeSlot.IsSafeTarget(unitTarget))
+                {
+                    // Get observer position
+                    Vector3 observerPos = aircraft.transform.position;
+
+                    var info = MasterSafeSlot.GetTargetInfo(unitTarget, observerPos);
+                    if (info != null)
+                    {
+                        // Update HUD text
+                        string displayText = $"SAFE TARGET\nRange: {info.Range:F0}m\nBearing: {info.Bearing:F0}°\nSpeed: {info.Speed:F0}m/s";
+                        
+                        if (targetInfoText.text != displayText)
+                        {
+                            targetInfoText.text = displayText;
+                            targetInfoText.gameObject.SetActive(true);
+                            Plugin.Log.LogDebug($"[MasterSafeSlot] Updated HUD display for safe target: {unitTarget.name}");
+                        }
+                    }
+                }
+                else
+                {
+                    // Clear display if target is not safe
+                    if (targetInfoText.text.Contains("SAFE TARGET"))
+                    {
+                        targetInfoText.text = "";
+                    }
+                }
+            }
+            catch (System.Exception ex)
+            {
+                Plugin.Log.LogWarning($"[MasterSafeSlot] Error in Update: {ex.Message}\n{ex.StackTrace}");
+            }
+        }
+
+        void OnDestroy()
+        {
+            MasterSafeSlot.ClearCache();
+        }
+    }
+
+    /// <summary>
     /// Patch HUD to display target info even without full weapon lock for safe targets
-    /// Uses CombatHUD.ShowTargetInfo() which was discovered in method discovery
     /// </summary>
     [HarmonyPatch(typeof(CombatHUD), "ShowTargetInfo")]
-    static class HUDTargetInfoPatch
+    static class CombatHUDShowTargetInfoPatch
     {
         static void Postfix(CombatHUD __instance, ref bool __result)
         {
             if (!Plugin.modEnabled || !Plugin.cfgMasterSafeSlot.Value) return;
+            if (__instance == null) return;
 
             try
             {
-                Plugin.Log.LogDebug($"[MasterSafeSlot] ShowTargetInfo called, result={__result}");
-                
                 // If the original method returned false (no target info shown),
                 // try to display info for a safe target.
                 if (!__result)
@@ -290,15 +466,8 @@ namespace ATFWyvernMod
                     var aircraft = GameBindings.Player.Aircraft.GetAircraft(silent: true);
                     var targetList = GameBindings.Player.TargetList.GetTargets(silent: true);
 
-                    if (aircraft == null)
+                    if (aircraft == null || targetList == null || targetList.Count == 0)
                     {
-                        Plugin.Log.LogDebug($"[MasterSafeSlot] Aircraft is null");
-                        return;
-                    }
-
-                    if (targetList == null || targetList.Count == 0)
-                    {
-                        Plugin.Log.LogDebug($"[MasterSafeSlot] Target list is null or empty");
                         return;
                     }
 
@@ -311,31 +480,9 @@ namespace ATFWyvernMod
                         var info = MasterSafeSlot.GetTargetInfo(unitTarget, observerPos);
                         if (info != null)
                         {
-                            // Try to update HUD text if available - try multiple field names
-                            var hudType = typeof(CombatHUD);
-                            var targetInfoField = hudType.GetField("targetInfo", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public) ??
-                                                  hudType.GetField("TargetInfo", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public) ??
-                                                  hudType.GetField("targetInfoText", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public);
-                            
-                            if (targetInfoField != null)
-                            {
-                                var targetInfoText = targetInfoField.GetValue(__instance) as Text;
-                                if (targetInfoText != null)
-                                {
-                                    targetInfoText.text = $"SAFE TARGET\nRange: {info.Range:F0}m\nBearing: {info.Bearing:F0}°\nSpeed: {info.Speed:F0}m/s";
-                                    targetInfoText.gameObject.SetActive(true);
-                                    __result = true; // Indicate that target info is now shown
-                                    Plugin.Log.LogInfo($"[MasterSafeSlot] Displaying info for safe target: {unitTarget.name}");
-                                }
-                                else
-                                {
-                                    Plugin.Log.LogDebug($"[MasterSafeSlot] targetInfo field is not a Text component");
-                                }
-                            }
-                            else
-                            {
-                                Plugin.Log.LogDebug($"[MasterSafeSlot] Could not find targetInfo field on CombatHUD");
-                            }
+                            // The helper MonoBehaviour will handle the display update
+                            __result = true; // Indicate that target info is now shown
+                            Plugin.Log.LogDebug($"[MasterSafeSlot] Safe target detected: {unitTarget.name}, helper will update display");
                         }
                     }
                 }

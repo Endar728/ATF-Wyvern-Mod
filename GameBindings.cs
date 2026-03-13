@@ -21,9 +21,17 @@ namespace ATFWyvernMod
                 {
                     try
                     {
-                        return SceneSingleton<CombatHUD>.i.aircraft;
+                        var combatHUD = SceneSingleton<CombatHUD>.i;
+                        if (combatHUD == null) return null;
+                        return combatHUD.aircraft;
                     }
-                    catch (NullReferenceException e)
+                    catch (NullReferenceException)
+                    {
+                        if (!silent)
+                            Plugin.Log.LogWarning("[GameBindings] Error getting aircraft: CombatHUD or aircraft is null");
+                        return null;
+                    }
+                    catch (Exception e)
                     {
                         if (!silent)
                             Plugin.Log.LogWarning($"[GameBindings] Error getting aircraft: {e.Message}");
@@ -42,7 +50,7 @@ namespace ATFWyvernMod
                         if (aircraft == null) return null;
                         return aircraft.weaponManager;
                     }
-                    catch (NullReferenceException e)
+                    catch (Exception e)
                     {
                         if (!silent)
                             Plugin.Log.LogWarning($"[GameBindings] Error getting weapon manager: {e.Message}");
@@ -61,7 +69,7 @@ namespace ATFWyvernMod
                         if (aircraft == null) return null;
                         return aircraft.targetCam;
                     }
-                    catch (NullReferenceException e)
+                    catch (Exception e)
                     {
                         if (!silent)
                             Plugin.Log.LogWarning($"[GameBindings] Error getting target cam: {e.Message}");
@@ -86,7 +94,7 @@ namespace ATFWyvernMod
                         var targetList = targetListCache.GetValue(combatHUD, silent: true);
                         return targetList ?? new List<Unit>();
                     }
-                    catch (NullReferenceException e)
+                    catch (Exception e)
                     {
                         if (!silent)
                             Plugin.Log.LogWarning($"[GameBindings] Error getting target list: {e.Message}");
@@ -107,7 +115,7 @@ namespace ATFWyvernMod
                 {
                     return GameplayUI.GameIsPaused;
                 }
-                catch (NullReferenceException e)
+                catch (Exception e)
                 {
                     Plugin.Log.LogDebug($"[GameBindings] Error checking game pause state: {e.Message}");
                     return false;
@@ -126,7 +134,7 @@ namespace ATFWyvernMod
                 {
                     return SceneSingleton<CombatHUD>.i;
                 }
-                catch (NullReferenceException e)
+                catch (Exception e)
                 {
                     if (!silent)
                         Plugin.Log.LogWarning($"[GameBindings] Error getting CombatHUD: {e.Message}");
@@ -143,7 +151,7 @@ namespace ATFWyvernMod
                 {
                     return SceneSingleton<FlightHud>.i;
                 }
-                catch (NullReferenceException e)
+                catch (Exception e)
                 {
                     if (!silent)
                         Plugin.Log.LogWarning($"[GameBindings] Error getting FlightHUD: {e.Message}");

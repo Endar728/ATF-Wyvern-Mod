@@ -27,9 +27,11 @@ namespace ATFWyvernMod
         /// </summary>
         /// <param name="currentObject">The object instance to retrieve the value from.</param>
         /// <param name="silent">If true, suppresses the log message when the cache is updated.</param>
-        /// <returns>The value of the field.</returns>
+        /// <returns>The value of the field, or null if not found.</returns>
         public TValue? GetValue(TObject currentObject, bool silent = false)
         {
+            if (currentObject == null) return default(TValue);
+
             if (traverse == null || cachedObject != currentObject)
             {
                 cachedObject = currentObject;
@@ -39,11 +41,27 @@ namespace ATFWyvernMod
                     Plugin.Log.LogDebug($"[TraverseCache<{typeof(TObject).Name}, {typeof(TValue).Name}>] Cached field '{fieldName}' for object of type '{typeof(TObject).Name}'.");
                 }
             }
-            return traverse.GetValue<TValue>();
+            
+            try
+            {
+                return traverse.GetValue<TValue>();
+            }
+            catch
+            {
+                return default(TValue);
+            }
         }
 
+        /// <summary>
+        /// Sets the value of the field for the specified object instance.
+        /// </summary>
+        /// <param name="currentObject">The object instance to set the value on.</param>
+        /// <param name="value">The value to set.</param>
+        /// <param name="silent">If true, suppresses the log message when the cache is updated.</param>
         public void SetValue(TObject currentObject, TValue value, bool silent = false)
         {
+            if (currentObject == null) return;
+
             if (traverse == null || cachedObject != currentObject)
             {
                 cachedObject = currentObject;
@@ -53,7 +71,18 @@ namespace ATFWyvernMod
                     Plugin.Log.LogDebug($"[TraverseCache<{typeof(TObject).Name}, {typeof(TValue).Name}>] Cached field '{fieldName}' for object of type '{typeof(TObject).Name}'.");
                 }
             }
-            traverse.SetValue(value);
+            
+            try
+            {
+                traverse.SetValue(value);
+            }
+            catch (System.Exception ex)
+            {
+                if (!silent)
+                {
+                    Plugin.Log.LogWarning($"[TraverseCache] Error setting field '{fieldName}': {ex.Message}");
+                }
+            }
         }
 
         /// <summary>

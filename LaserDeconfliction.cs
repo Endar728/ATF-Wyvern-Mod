@@ -13,10 +13,10 @@ namespace ATFWyvernMod
     public static class LaserDeconfliction
     {
         // Track selected targets per player
-        private static Dictionary<int, HashSet<object>> playerSelectedTargets = new Dictionary<int, HashSet<object>>();
+        private static readonly Dictionary<int, HashSet<object>> playerSelectedTargets = new Dictionary<int, HashSet<object>>();
         
         // Track laser assignments per player
-        private static Dictionary<int, List<object>> playerLaserAssignments = new Dictionary<int, List<object>>();
+        private static readonly Dictionary<int, List<object>> playerLaserAssignments = new Dictionary<int, List<object>>();
 
         /// <summary>
         /// Updates target selection for a player and redistributes laser assignments
@@ -24,20 +24,31 @@ namespace ATFWyvernMod
         public static void UpdatePlayerTargets(int playerId, List<object> selectedTargets)
         {
             if (!Plugin.modEnabled || !Plugin.cfgLaserDeconfliction.Value) return;
+            if (selectedTargets == null) return;
 
-            // Update player's selected targets
-            if (!playerSelectedTargets.ContainsKey(playerId))
+            try
             {
-                playerSelectedTargets[playerId] = new HashSet<object>();
-            }
-            playerSelectedTargets[playerId].Clear();
-            foreach (var target in selectedTargets)
-            {
-                playerSelectedTargets[playerId].Add(target);
-            }
+                // Update player's selected targets
+                if (!playerSelectedTargets.ContainsKey(playerId))
+                {
+                    playerSelectedTargets[playerId] = new HashSet<object>();
+                }
+                playerSelectedTargets[playerId].Clear();
+                foreach (var target in selectedTargets)
+                {
+                    if (target != null)
+                    {
+                        playerSelectedTargets[playerId].Add(target);
+                    }
+                }
 
-            // Redistribute targets among all players
-            RedistributeLaserTargets();
+                // Redistribute targets among all players
+                RedistributeLaserTargets();
+            }
+            catch (System.Exception ex)
+            {
+                Plugin.Log.LogWarning($"[LaserDeconfliction] Error updating player targets: {ex.Message}");
+            }
         }
 
         /// <summary>
@@ -45,44 +56,59 @@ namespace ATFWyvernMod
         /// </summary>
         private static void RedistributeLaserTargets()
         {
-            // Get all unique targets across all players
-            HashSet<object> allTargets = new HashSet<object>();
-            foreach (var playerTargets in playerSelectedTargets.Values)
+            try
             {
-                foreach (var target in playerTargets)
+                // Get all unique targets across all players
+                HashSet<object> allTargets = new HashSet<object>();
+                foreach (var playerTargets in playerSelectedTargets.Values)
                 {
-                    allTargets.Add(target);
+                    foreach (var target in playerTargets)
+                    {
+                        if (target != null)
+                        {
+                            allTargets.Add(target);
+                        }
+                    }
                 }
-            }
 
-            // Clear previous assignments
-            foreach (var playerId in playerLaserAssignments.Keys.ToList())
-            {
-                playerLaserAssignments[playerId].Clear();
-            }
+                // Clear previous assignments
+                foreach (var playerId in playerLaserAssignments.Keys.ToList())
+                {
+                    playerLaserAssignments[playerId].Clear();
+                }
 
-            // Distribute targets round-robin style
-            var targetList = allTargets.ToList();
-            var playerIds = playerSelectedTargets.Keys.ToList();
-            
-            for (int i = 0; i < targetList.Count; i++)
-            {
-                int playerIndex = i % playerIds.Count;
-                int playerId = playerIds[playerIndex];
+                // Distribute targets round-robin style
+                var targetList = allTargets.ToList();
+                var playerIds = playerSelectedTargets.Keys.ToList();
                 
-                if (!playerLaserAssignments.ContainsKey(playerId))
+                if (playerIds.Count == 0 || targetList.Count == 0)
                 {
-                    playerLaserAssignments[playerId] = new List<object>();
+                    return;
                 }
                 
-                // Only assign if this player has this target selected
-                if (playerSelectedTargets[playerId].Contains(targetList[i]))
+                for (int i = 0; i < targetList.Count; i++)
                 {
-                    playerLaserAssignments[playerId].Add(targetList[i]);
+                    int playerIndex = i % playerIds.Count;
+                    int playerId = playerIds[playerIndex];
+                    
+                    if (!playerLaserAssignments.ContainsKey(playerId))
+                    {
+                        playerLaserAssignments[playerId] = new List<object>();
+                    }
+                    
+                    // Only assign if this player has this target selected
+                    if (playerSelectedTargets[playerId].Contains(targetList[i]))
+                    {
+                        playerLaserAssignments[playerId].Add(targetList[i]);
+                    }
                 }
-            }
 
-            Plugin.Log.LogInfo($"[LaserDeconfliction] Redistributed {targetList.Count} targets among {playerIds.Count} players");
+                Plugin.Log.LogDebug($"[LaserDeconfliction] Redistributed {targetList.Count} targets among {playerIds.Count} players");
+            }
+            catch (System.Exception ex)
+            {
+                Plugin.Log.LogWarning($"[LaserDeconfliction] Error redistributing targets: {ex.Message}");
+            }
         }
 
         /// <summary>
@@ -134,12 +160,12 @@ namespace ATFWyvernMod
             try
             {
                 // Try to get DynamicMap instance
-                var mapType = typeof(DynamicMap);
                 var mapInstance = SceneSingleton<DynamicMap>.i;
                 if (mapInstance == null) return;
 
                 // Try to get selectedIcons property via reflection
-                var selectedIconsProp = mapType.GetProperty("selectedIcons");
+                var mapType = typeof(DynamicMap);
+                var selectedIconsProp = mapType.GetProperty("selectedIcons", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
                 if (selectedIconsProp == null) return;
 
                 var selectedIcons = selectedIconsProp.GetValue(mapInstance);
@@ -154,7 +180,7 @@ namespace ATFWyvernMod
                         if (icon != null)
                         {
                             var iconType = icon.GetType();
-                            var unitProp = iconType.GetProperty("unit");
+                            var unitProp = iconType.GetProperty("unit", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
                             if (unitProp != null)
                             {
                                 var unit = unitProp.GetValue(icon);
@@ -190,6 +216,8 @@ namespace ATFWyvernMod
 
         private bool ListsEqual(List<object> list1, List<object> list2)
         {
+            if (list1 == null && list2 == null) return true;
+            if (list1 == null || list2 == null) return false;
             if (list1.Count != list2.Count) return false;
             for (int i = 0; i < list1.Count; i++)
             {
@@ -211,10 +239,9 @@ namespace ATFWyvernMod
         {
             if (!Plugin.modEnabled || !Plugin.cfgLaserDeconfliction.Value) return;
             
-            // Critical null check - if instance is null, don't proceed
             if (__instance == null)
             {
-                Plugin.Log.LogWarning($"[LaserDeconfliction] LaserDesignator instance is null, skipping patch");
+                Plugin.Log.LogWarning("[LaserDeconfliction] LaserDesignator instance is null, skipping patch");
                 return;
             }
 
@@ -234,10 +261,10 @@ namespace ATFWyvernMod
 
                 // Try to get the current target list first to preserve its type/structure
                 var designatorType = typeof(LaserDesignator);
-                var targetListProp = designatorType.GetProperty("targetList", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public) ?? 
-                                     designatorType.GetProperty("TargetList", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public);
-                var targetListField = designatorType.GetField("targetList", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public) ??
-                                      designatorType.GetField("TargetList", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public);
+                var targetListProp = designatorType.GetProperty("targetList", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public) ?? 
+                                     designatorType.GetProperty("TargetList", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+                var targetListField = designatorType.GetField("targetList", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public) ??
+                                      designatorType.GetField("TargetList", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
                 
                 // Get current list if it exists
                 List<Unit> currentList = null;
@@ -300,7 +327,7 @@ namespace ATFWyvernMod
                     }
                     else
                     {
-                        Plugin.Log.LogWarning($"[LaserDeconfliction] Could not find targetList property or field on LaserDesignator");
+                        Plugin.Log.LogWarning("[LaserDeconfliction] Could not find targetList property or field on LaserDesignator");
                     }
                 }
             }
@@ -313,7 +340,6 @@ namespace ATFWyvernMod
 
     /// <summary>
     /// Patch WeaponManager.SetTargetList() to track selected targets and apply deconflicted targets
-    /// Note: ReadOnlySpan is not available in .NET Framework 4.7.2, so we use a postfix to modify after
     /// </summary>
     [HarmonyPatch(typeof(WeaponManager), "SetTargetList")]
     static class WeaponManagerSetTargetListPatch
@@ -322,10 +348,9 @@ namespace ATFWyvernMod
         {
             if (!Plugin.modEnabled || !Plugin.cfgLaserDeconfliction.Value) return;
             
-            // Critical null check
             if (__instance == null)
             {
-                Plugin.Log.LogWarning($"[LaserDeconfliction] WeaponManager instance is null, skipping patch");
+                Plugin.Log.LogWarning("[LaserDeconfliction] WeaponManager instance is null, skipping patch");
                 return;
             }
 
@@ -371,11 +396,11 @@ namespace ATFWyvernMod
                 var managerType = typeof(WeaponManager);
                 if (managerType == null)
                 {
-                    Plugin.Log.LogWarning($"[LaserDeconfliction] Could not get WeaponManager type");
+                    Plugin.Log.LogWarning("[LaserDeconfliction] Could not get WeaponManager type");
                     return;
                 }
                 
-                var targetListField = managerType.GetField("targetList", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public);
+                var targetListField = managerType.GetField("targetList", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
                 if (targetListField != null)
                 {
                     // Try to get existing list first to preserve reference
@@ -397,7 +422,7 @@ namespace ATFWyvernMod
                 }
                 else
                 {
-                    Plugin.Log.LogWarning($"[LaserDeconfliction] Could not find targetList field on WeaponManager");
+                    Plugin.Log.LogWarning("[LaserDeconfliction] Could not find targetList field on WeaponManager");
                 }
             }
             catch (System.Exception ex)
