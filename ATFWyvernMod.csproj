@@ -3,6 +3,8 @@
     <TargetFramework>net472</TargetFramework>
     <AssemblyName>ATFWyvernMod</AssemblyName>
     <LangVersion>latest</LangVersion>
+    <Description>C# BepInEx plugin for Nuclear Option</Description>
+    <DefaultItemExcludes>$(DefaultItemExcludes);HELPFUL\**</DefaultItemExcludes>
   </PropertyGroup>
   <ItemGroup>
     <Reference Include="Assembly-CSharp">

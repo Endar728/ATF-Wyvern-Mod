@@ -107,11 +107,27 @@ namespace ATFWyvernMod
     [HarmonyPatch]
     static class HUDLaserGuidedStatePatch
     {
+        static bool Prepare()
+        {
+            // Only try to apply this patch if Laser Reticle Visibility is enabled
+            try
+            {
+                return Plugin.cfgLaserReticleVisibility != null && Plugin.cfgLaserReticleVisibility.Value;
+            }
+            catch
+            {
+                // If config isn't loaded yet, skip this patch
+                return false;
+            }
+        }
+
         static System.Reflection.MethodBase TargetMethod()
         {
             try
             {
                 var assembly = typeof(Unit).Assembly;
+                if (assembly == null) return null;
+                
                 var hudLaserType = assembly.GetType("HUDLaserGuidedState");
                 if (hudLaserType != null)
                 {
@@ -125,20 +141,32 @@ namespace ATFWyvernMod
                     }
 
                     // Fallback: Look for methods that update/display the reticle
-                    foreach (var method in hudLaserType.GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic))
+                    try
                     {
-                        if ((method.Name.Contains("Update") || method.Name.Contains("Display") || method.Name.Contains("Show")) &&
-                            !method.IsSpecialName)
+                        var methods = hudLaserType.GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                        if (methods != null)
                         {
-                            Plugin.Log.LogInfo($"[LaserReticleVisibility] Found potential method: {hudLaserType.FullName}.{method.Name}");
-                            return method;
+                            foreach (var method in methods)
+                            {
+                                if (method == null) continue;
+                                if ((method.Name.Contains("Update") || method.Name.Contains("Display") || method.Name.Contains("Show")) &&
+                                    !method.IsSpecialName)
+                                {
+                                    Plugin.Log.LogInfo($"[LaserReticleVisibility] Found potential method: {hudLaserType.FullName}.{method.Name}");
+                                    return method;
+                                }
+                            }
                         }
+                    }
+                    catch
+                    {
+                        // Skip if we can't get methods
                     }
                 }
             }
-            catch (System.Exception ex)
+            catch
             {
-                Plugin.Log.LogWarning($"[LaserReticleVisibility] Error finding HUDLaserGuidedState method: {ex.Message}\n{ex.StackTrace}");
+                // Silently fail - this is optional
             }
 
             return null;

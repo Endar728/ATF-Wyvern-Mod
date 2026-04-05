@@ -31,62 +31,108 @@ namespace ATFWyvernMod
         void Update()
         {
             // Toggle mod features with key
-            if (Input.GetKeyDown(cfgToggleKey.Value))
+            // Safety check: ensure config is loaded before accessing
+            if (cfgToggleKey != null && Input.GetKeyDown(cfgToggleKey.Value))
             {
                 modEnabled = !modEnabled;
                 string status = modEnabled ? "ENABLED" : "DISABLED";
                 Log.LogInfo($"[ATF Wyvern Mod] ===== Mod features: {status} =====");
-                Log.LogInfo($"[ATF Wyvern Mod] - Laser Deconfliction: {(cfgLaserDeconfliction.Value && modEnabled ? "ON" : "OFF")}");
-                Log.LogInfo($"[ATF Wyvern Mod] - Time To Impact: {(cfgTimeToImpact.Value && modEnabled ? "ON" : "OFF")}");
-                Log.LogInfo($"[ATF Wyvern Mod] - Master Safe Slot: {(cfgMasterSafeSlot.Value && modEnabled ? "ON" : "OFF")}");
-                Log.LogInfo($"[ATF Wyvern Mod] - Laser Reticle Visibility: {(cfgLaserReticleVisibility.Value && modEnabled ? "ON" : "OFF")}");
+                Log.LogInfo($"[ATF Wyvern Mod] - Laser Deconfliction: {(cfgLaserDeconfliction?.Value == true && modEnabled ? "ON" : "OFF")}");
+                Log.LogInfo($"[ATF Wyvern Mod] - Time To Impact: {(cfgTimeToImpact?.Value == true && modEnabled ? "ON" : "OFF")}");
+                Log.LogInfo($"[ATF Wyvern Mod] - Master Safe Slot: {(cfgMasterSafeSlot?.Value == true && modEnabled ? "ON" : "OFF")}");
+                Log.LogInfo($"[ATF Wyvern Mod] - Laser Reticle Visibility: {(cfgLaserReticleVisibility?.Value == true && modEnabled ? "ON" : "OFF")}");
             }
         }
 
         void Awake()
         {
-            Log = Logger;
-
-            // Configuration setup
-            cfgLaserDeconfliction = Config.Bind("Features", "LaserDeconfliction", true,
-                "Enable smart laser designator deconfliction (distributes targets among players)");
-            cfgTimeToImpact = Config.Bind("Features", "TimeToImpact", true,
-                "Show Time-To-Impact readout for bombs and missiles");
-            cfgMasterSafeSlot = Config.Bind("Features", "MasterSafeSlot", true,
-                "Enable master safe/empty weapon slot (no friendly lock required for range/bearing/speed)");
-            cfgLaserReticleVisibility = Config.Bind("Features", "LaserReticleVisibility", true,
-                "Make laser reticle more visible in night vision mode on target camera");
-            cfgToggleKey = Config.Bind("General", "ToggleKey", KeyCode.F9,
-                "Key to toggle mod features");
-            cfgDiscoverMethods = Config.Bind("Debug", "DiscoverMethods", false,
-                "Enable method discovery logging (logs all relevant game methods on startup)");
-
-            // Log initial state
-            Log.LogInfo("[ATF Wyvern Mod] v1.0.0 - Initializing...");
-            Log.LogInfo($"[ATF Wyvern Mod] Features enabled: LaserDeconfliction={cfgLaserDeconfliction.Value}, TimeToImpact={cfgTimeToImpact.Value}, MasterSafeSlot={cfgMasterSafeSlot.Value}, LaserReticleVisibility={cfgLaserReticleVisibility.Value}");
-
-            // Method discovery (if enabled)
-            if (cfgDiscoverMethods.Value)
-            {
-                DiscoverGameMethods();
-            }
-
-            // Initialize helpers on scene load
-            SceneManager.sceneLoaded += OnSceneLoaded;
-            
-            // Handle scene unload
-            SceneManager.sceneUnloaded += OnSceneUnloaded;
-
-            // Apply Harmony patches
-            var harmony = new Harmony("com.atf.wyvernmod");
+            // Wrap everything in try-catch to ensure we always log something
             try
             {
-                harmony.PatchAll();
-                Log.LogInfo("[ATF Wyvern Mod] All Harmony patches applied successfully");
+                Log = Logger;
+                Log.LogInfo("[ATF Wyvern Mod] v1.0.0 - Starting initialization...");
+
+                // Configuration setup
+                try
+                {
+                    cfgLaserDeconfliction = Config.Bind("Features", "LaserDeconfliction", true,
+                        "Enable smart laser designator deconfliction (distributes targets among players)");
+                    cfgTimeToImpact = Config.Bind("Features", "TimeToImpact", true,
+                        "Show Time-To-Impact readout for bombs and missiles");
+                    cfgMasterSafeSlot = Config.Bind("Features", "MasterSafeSlot", true,
+                        "Show range/bearing/speed for same-faction contacts and block weapon release while they are primary target or engaged unit");
+                    cfgLaserReticleVisibility = Config.Bind("Features", "LaserReticleVisibility", true,
+                        "Make laser reticle more visible in night vision mode on target camera");
+                    cfgToggleKey = Config.Bind("General", "ToggleKey", KeyCode.F9,
+                        "Key to toggle mod features");
+                    cfgDiscoverMethods = Config.Bind("Debug", "DiscoverMethods", false,
+                        "Enable method discovery logging (logs all relevant game methods on startup)");
+                    
+                    Log.LogInfo("[ATF Wyvern Mod] Configuration loaded successfully");
+                }
+                catch (System.Exception ex)
+                {
+                    Log.LogError($"[ATF Wyvern Mod] Error loading configuration: {ex.Message}\n{ex.StackTrace}");
+                    throw; // Re-throw to prevent mod from loading with broken config
+                }
+
+                // Log initial state
+                Log.LogInfo("[ATF Wyvern Mod] v1.0.0 - Initializing...");
+                Log.LogInfo($"[ATF Wyvern Mod] Features enabled: LaserDeconfliction={cfgLaserDeconfliction.Value}, TimeToImpact={cfgTimeToImpact.Value}, MasterSafeSlot={cfgMasterSafeSlot.Value}, LaserReticleVisibility={cfgLaserReticleVisibility.Value}");
+
+                // Method discovery (if enabled)
+                if (cfgDiscoverMethods.Value)
+                {
+                    try
+                    {
+                        DiscoverGameMethods();
+                    }
+                    catch (System.Exception ex)
+                    {
+                        Log.LogWarning($"[ATF Wyvern Mod] Error during method discovery: {ex.Message}");
+                    }
+                }
+
+                // Initialize helpers on scene load
+                try
+                {
+                    SceneManager.sceneLoaded += OnSceneLoaded;
+                    SceneManager.sceneUnloaded += OnSceneUnloaded;
+                    Log.LogInfo("[ATF Wyvern Mod] Scene event handlers registered");
+                }
+                catch (System.Exception ex)
+                {
+                    Log.LogError($"[ATF Wyvern Mod] Error registering scene handlers: {ex.Message}\n{ex.StackTrace}");
+                }
+
+                // Apply Harmony patches
+                try
+                {
+                    var harmony = new Harmony("com.atf.wyvernmod");
+                    harmony.PatchAll();
+                    Log.LogInfo("[ATF Wyvern Mod] All Harmony patches applied successfully");
+                }
+                catch (System.Exception ex)
+                {
+                    Log.LogError($"[ATF Wyvern Mod] Error applying Harmony patches: {ex.Message}\n{ex.StackTrace}");
+                    // Don't throw - allow mod to load even if some patches fail
+                }
+
+                Log.LogInfo("[ATF Wyvern Mod] Initialization complete!");
             }
             catch (System.Exception ex)
             {
-                Log.LogError($"[ATF Wyvern Mod] Error applying Harmony patches: {ex.Message}\n{ex.StackTrace}");
+                // Last resort error handling - log to BepInEx's default logger if our logger isn't set
+                if (Log != null)
+                {
+                    Log.LogFatal($"[ATF Wyvern Mod] FATAL ERROR during initialization: {ex.Message}\n{ex.StackTrace}");
+                }
+                else
+                {
+                    // Use BepInEx's base logger as fallback
+                    Logger.LogFatal($"[ATF Wyvern Mod] FATAL ERROR during initialization: {ex.Message}\n{ex.StackTrace}");
+                }
+                throw; // Re-throw to let BepInEx know the mod failed to load
             }
         }
 
@@ -128,6 +174,16 @@ namespace ATFWyvernMod
             LaserDeconfliction.Clear();
             MasterSafeSlot.ClearCache();
             LaserReticleVisibility.ClearCache();
+            
+            // Log mod status when entering gameplay scenes (not MainMenu)
+            if (scene.name != "MainMenu" && modEnabled)
+            {
+                Log.LogInfo($"[ATF Wyvern Mod] ===== Active in scene: {scene.name} =====");
+                Log.LogInfo($"[ATF Wyvern Mod] - Master Safe Slot: {(cfgMasterSafeSlot.Value ? "ENABLED" : "DISABLED")}");
+                Log.LogInfo($"[ATF Wyvern Mod] - Time To Impact: {(cfgTimeToImpact.Value ? "ENABLED" : "DISABLED")}");
+                Log.LogInfo($"[ATF Wyvern Mod] - Laser Deconfliction: {(cfgLaserDeconfliction.Value ? "ENABLED" : "DISABLED")}");
+                Log.LogInfo($"[ATF Wyvern Mod] - Laser Reticle Visibility: {(cfgLaserReticleVisibility.Value ? "ENABLED" : "DISABLED")}");
+            }
         }
 
         void OnSceneUnloaded(Scene scene)
